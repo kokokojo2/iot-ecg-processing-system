@@ -1,3 +1,7 @@
 .gitignore
 .idea
 data
+/terraform-aws/.terraform.lock.hcl
+/terraform-aws/terraform.tfstate
+/terraform-aws/terraform.tfstate.backup
+
