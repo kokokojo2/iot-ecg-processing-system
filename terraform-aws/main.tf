@@ -3,3 +3,11 @@ provider "aws" {
   access_key = "AKIATWBJ2BBBUHV7TQIN"
   secret_key = "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"
 }
+
+terraform {
+  required_providers {
+    local = {
+      source = "hashicorp/local"
+    }
+  }
+}

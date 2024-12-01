@@ -5,3 +5,4 @@ data
 /terraform-aws/terraform.tfstate
 /terraform-aws/terraform.tfstate.backup
 
+/iot-emulation/certificates/

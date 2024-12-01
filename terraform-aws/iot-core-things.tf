@@ -37,4 +37,17 @@ resource "aws_iot_thing_principal_attachment" "emulated_iot_thing_1_principal_at
   principal = aws_iot_certificate.emulated_iot_thing_1_cert.arn
 }
 
+resource "local_file" "emulated_iot_thing_1_cert_private_key" {
+  filename = "${path.module}/certs/emulated_device_1_cert_private.pem.key"
+  content  = aws_iot_certificate.emulated_iot_thing_1_cert.private_key
+}
 
+resource "local_file" "emulated_iot_thing_1_cert_device_cert" {
+  filename = "${path.module}/certs/emulated_device_1_cert.pem.crt"
+  content  = aws_iot_certificate.emulated_iot_thing_1_cert.certificate_pem
+}
+
+resource "local_file" "emulated_iot_thing_1_cert_public_key" {
+  filename = "${path.module}/certs/emulated_device_1_cert_public.pem.key"
+  content  = aws_iot_certificate.emulated_iot_thing_1_cert.public_key
+}
