@@ -15,4 +15,7 @@ resource "aws_dynamodb_table" "ecg_data_raw_table" {
     name = "timestamp"
     type = "S"
   }
+
+  stream_enabled = true
+  stream_view_type = "NEW_IMAGE"
 }

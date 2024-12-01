@@ -61,5 +61,3 @@ resource "aws_iam_role_policy_attachment" "example_attachment" {
   role       = aws_iam_role.iot_core_dynamodb_role.name
   policy_arn = aws_iam_policy.iot_core_dynamodb_role_write_policy.arn
 }
-
-
