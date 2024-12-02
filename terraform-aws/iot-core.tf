@@ -9,8 +9,8 @@ resource "aws_iot_topic_rule" "iot_topic_rule" {
     role_arn       = aws_iam_role.iot_core_dynamodb_role.arn
     hash_key_field = "device_id"
     hash_key_value = "$${device_id}"
-    range_key_field = "timestamp"
-    range_key_value = "$${timestamp}"
+    range_key_field = "timestamp_capture_begin"
+    range_key_value = "$${timestamp_capture_begin}"
   }
 }
 

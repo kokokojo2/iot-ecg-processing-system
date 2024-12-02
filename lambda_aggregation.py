@@ -53,13 +53,13 @@ def process_new_record(new_image):
     device_id = new_image["device_id"]["S"]
     chunk_idx = int(new_image["chunk_idx"]["N"])
     part = int(new_image["part"]["N"])
-    timestamp = new_image["timestamp"]["S"]
+    timestamp_capture_begin = new_image["timestamp_capture_begin"]["S"]
 
     print("DEBUG: Extracted necessary fields")
     print("device_id:", device_id)
     print("chunk_idx:", chunk_idx)
     print("part:", part)
-    print("timestamp:", timestamp)
+    print("timestamp_capture_begin:", timestamp_capture_begin)
 
     # skip processing for other parts of the chunk
     # trigger processing only for 15th part,
@@ -70,7 +70,7 @@ def process_new_record(new_image):
     # attempt to mark the record as "processing"
     try:
         table.update_item(
-            Key={"device_id": device_id, "timestamp": timestamp},
+            Key={"device_id": device_id, "timestamp_capture_begin": timestamp_capture_begin},
             UpdateExpression="SET processing = :in_progress",
             ConditionExpression="attribute_not_exists(processing)",
             ExpressionAttributeValues={":in_progress": True},
@@ -117,9 +117,28 @@ def aggregate_ecg_data(device_id, chunk_idx):
         return
 
     aggregated_data = []
+    timestamps_capture_begin = []
+    timestamps_chunk_sent = []
+    sampling_rates = set()
+
     for item in sorted(items, key=lambda x: int(x["part"])):
         aggregated_data.extend(item["ecg_data"])
+        timestamps_capture_begin.append(item["timestamp_capture_begin"])
+        timestamps_chunk_sent.append(item["timestamp_chunk_sent"])
+        sampling_rates.add(item["sampling_rate_hz"])
 
+    if len(sampling_rates) != 1:
+        raise ValueError(
+            f"ERROR: Inconsistent sampling rates for device {device_id}, chunk {chunk_idx}: {sampling_rates}"
+        )
+
+    aggregated_metadata = {
+        "timestamp_capture_begin": min(timestamps_capture_begin),
+        "timestamp_chunk_sent": max(timestamps_chunk_sent),
+        "sampling_rate_hz": list(sampling_rates)[0],
+    }
+
+    print(f"DEBUG: Aggregated metadata: {aggregated_metadata}")
     print(f"DEBUG: Aggregated data length: {len(aggregated_data)}")
     if len(aggregated_data) != 4096:
         print(
@@ -128,16 +147,16 @@ def aggregate_ecg_data(device_id, chunk_idx):
         return
 
     # Send the aggregated data to Kinesis
-    send_to_kinesis(device_id, chunk_idx, aggregated_data)
+    send_to_kinesis(device_id, chunk_idx, aggregated_data, aggregated_metadata)
 
     for item in items:
         table.update_item(
-            Key={"device_id": item["device_id"], "timestamp": item["timestamp"]},
+            Key={"device_id": item["device_id"], "timestamp_capture_begin": item["timestamp_capture_begin"]},
             UpdateExpression="SET processing = :complete",
             ExpressionAttributeValues={":complete": "done"},
         )
         print(
-            f"DEBUG: Marked record as 'complete' for device {device_id}, timestamp {item['timestamp']}."
+            f"DEBUG: Marked record as 'complete' for device {device_id}, timestamp_capture_begin {item['timestamp_capture_begin']}."
         )
 
 
@@ -151,13 +170,14 @@ def decimal_serializer(obj):
     raise TypeError(f"Type {type(obj)} not serializable")
 
 
-def send_to_kinesis(device_id, chunk_idx, aggregated_data):
+def send_to_kinesis(device_id, chunk_idx, aggregated_data, aggregated_metadata):
     """
     Send the aggregated ECG data to Kinesis for downstream processing.
     """
     payload = {
         "device_id": device_id,
         "chunk_idx": chunk_idx,
+        **aggregated_metadata,  # Add aggregated metadata
         # "aggregated_data": aggregated_data,  # Exclude from debug logs
     }
     print(

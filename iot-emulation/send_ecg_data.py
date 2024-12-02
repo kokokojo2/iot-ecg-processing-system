@@ -23,7 +23,7 @@ def parse_arguments():
     parser.add_argument("--root_ca", required=True, help="Path to the Root CA certificate.")
     parser.add_argument("--hdf5_file", required=True, help="Path to the HDF5 file containing ECG data.")
     parser.add_argument("--dataset_name", required=True, help="Name of the dataset in the HDF5 file.")
-    parser.add_argument("--interval", default=0.1, type=int, help="Interval in seconds between data chunks.")
+    parser.add_argument("--interval", default=0.64, type=int, help="Interval in seconds between data chunks.")
     return parser.parse_args()
 
 
@@ -46,11 +46,13 @@ def get_ecg_chunks(file_path, dataset_name, chunk_size=1024):
             for part, i in enumerate(range(0, record.shape[0], chunk_size)):  # Slice by chunk size
                 yield chunk_idx, part, record[i:i+chunk_size, :].tolist()
 
-def prepare_message(client_id, ecg_data, chunk_idx, part):
-    """Prepare the JSON message with a timestamp and ECG data."""
-    return  {
+def prepare_message(client_id, ecg_data, chunk_idx, part, timestamp_capture_begin, sampling_rate_hz):
+    """Prepare the JSON message with additional metadata."""
+    return {
         "device_id": f"emulated_device_{client_id}",
-        "timestamp": datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
+        "timestamp_chunk_sent": datetime.now().strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
+        "timestamp_capture_begin": timestamp_capture_begin.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
+        "sampling_rate_hz": sampling_rate_hz,
         "chunk_idx": chunk_idx,
         "part": part,
         "ecg_data": ecg_data
@@ -97,14 +99,29 @@ def main():
     connect_future.result()
     print("Connected successfully!")
 
+    # Define a fixed sampling rate
+    sampling_rate_hz = 400  # Hz
+
     try:
-        for chunk_idx, part, ecg_chunk in get_ecg_chunks(args.hdf5_file, args.dataset_name, chunk_size=256): # Get (1, 1024, 12) chunk
-            message = prepare_message(args.client_id, ecg_chunk, chunk_idx, part)  # Format as JSON
-            print(f"Publishing message with chunk_idx={chunk_idx}, data_part={part} at timestamp={message['timestamp']}")
+        for chunk_idx, part, ecg_chunk in get_ecg_chunks(args.hdf5_file, args.dataset_name, chunk_size=256):
+            # Calculate timestamp_capture_begin for this chunk
+            timestamp_capture_begin = datetime.now()
+
+            # Prepare the message
+            message = prepare_message(
+                args.client_id,
+                ecg_chunk,
+                chunk_idx,
+                part,
+                timestamp_capture_begin,
+                sampling_rate_hz
+            )
+
+            print(f"Publishing message with chunk_idx={chunk_idx}, data_part={part} at timestamp={message['timestamp_chunk_sent']}")
             publish_future = mqtt_connection.publish(
                 topic=args.topic,
                 payload=json.dumps(message),
-                qos=QoS.AT_MOST_ONCE  # Ensure at least once delivery
+                qos=QoS.AT_MOST_ONCE
             )[0]
 
             publish_future.add_done_callback(on_publish_complete)
