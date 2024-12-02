@@ -71,7 +71,7 @@ def get_records_from_kinesis(stream_name, shard_id, shard_iterator_type='TRIM_HO
 
             records = response['Records']
             for record in records:
-                print(f"Processing record with data: {record['Data'][:100]}...")ta
+                print(f"Processing record with data: {record['Data'][:100]}...")
                 yield json.loads(record['Data'])
 
             if not records:
