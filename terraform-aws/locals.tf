@@ -12,4 +12,6 @@ locals {
   fargate_task_execution_role = "fargate-ecg-task-execution-role"
   fargate_task_container_name = "ecg-inference-container"
   fargate_task_image_uri = "253490759747.dkr.ecr.eu-central-1.amazonaws.com/ecg-docker-inference:latest"
+  fargate_service_name = "fargate-ecg-processing-service"
+  fargate_ecg_task_name = "fargate-ecg-processing-task"
 }
