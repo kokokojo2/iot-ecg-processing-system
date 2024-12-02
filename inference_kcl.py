@@ -2,9 +2,16 @@ import os
 import json
 import numpy as np
 import boto3
+import logging
 from tensorflow.keras.models import load_model
 from tensorflow.keras.optimizers import Adam
 import time
+
+# Configure logging
+logging.basicConfig(
+    format='%(asctime)s: %(levelname)s  %(message)s',
+    level=logging.INFO
+)
 
 # KCL usage should be added later
 # now the code uses hardcoded shardId
@@ -50,8 +57,8 @@ def get_records_from_kinesis(stream_name, shard_id, shard_iterator_type='TRIM_HO
     """
     kinesis_client = boto3.client('kinesis')
 
-    print(f"Getting shard iterator for stream '{stream_name}', shard ID '{shard_id}', "
-          f"using iterator type '{shard_iterator_type}'.")
+    logging.info(f"Getting shard iterator for stream '{stream_name}', shard ID '{shard_id}', "
+                 f"using iterator type '{shard_iterator_type}'.")
 
     try:
         shard_iterator = kinesis_client.get_shard_iterator(
@@ -59,9 +66,9 @@ def get_records_from_kinesis(stream_name, shard_id, shard_iterator_type='TRIM_HO
             ShardId=shard_id,
             ShardIteratorType=shard_iterator_type,
         )['ShardIterator']
-        print("Successfully obtained shard iterator.")
+        logging.info("Successfully obtained shard iterator.")
     except Exception as e:
-        print(f"Error obtaining shard iterator: {e}")
+        logging.error(f"Error obtaining shard iterator: {e}")
         raise
 
     while True:
@@ -71,25 +78,25 @@ def get_records_from_kinesis(stream_name, shard_id, shard_iterator_type='TRIM_HO
 
             records = response['Records']
             for record in records:
-                print(f"Processing record with data: {record['Data'][:100]}...")
+                logging.info(f"Processing record with data: {record['Data'][:100]}...")  # First 100 chars of data
                 yield json.loads(record['Data'])
 
+            # Avoid hitting Kinesis read limits
             if not records:
                 time.sleep(0.5)
 
         except Exception as e:
-            print(f"Error fetching or processing records: {e}")
-            time.sleep(1)
-
+            logging.error(f"Error fetching or processing records: {e}")
+            time.sleep(1)  # Adding delay to avoid potential throttling
 
 
 if __name__ == "__main__":
-    print(f"Loading model from {PATH_TO_MODEL}")
+    logging.info(f"Loading model from {PATH_TO_MODEL}")
     model = load_model(PATH_TO_MODEL, compile=False)
-    print("compiling model.")
+    logging.info("Compiling model.")
     model.compile(loss="binary_crossentropy", optimizer=Adam())
 
-    print(f"Starting to consume records from Kinesis stream: {STREAM_NAME}, Shard ID: {SHARD_ID}")
+    logging.info(f"Starting to consume records from Kinesis stream: {STREAM_NAME}, Shard ID: {SHARD_ID}")
     try:
         for record in get_records_from_kinesis(stream_name=STREAM_NAME, shard_id=SHARD_ID):
             try:
@@ -97,16 +104,16 @@ if __name__ == "__main__":
                 chunk_idx = record['chunk_idx']
                 aggregated_data = np.array(record['aggregated_data'])
 
-                print(f"Received data from device: {device_id}, chunk index: {chunk_idx}, shape: {aggregated_data.shape}.")
-                print("Running prediction...")
+                logging.info(f"Received data from device: {device_id}, chunk index: {chunk_idx}, shape: {aggregated_data.shape}.")
+                logging.info("Running prediction...")
                 prediction = predict_on_data(model, aggregated_data)
-                print(f"Prediction: {prediction}")
+                logging.info(f"Prediction: {prediction}")
 
             except Exception as e:
-                print(f"Error processing record: {e}")
+                logging.error(f"Error processing record: {e}")
 
     except KeyboardInterrupt:
-        print("Shutting down consumer.")
+        logging.info("Shutting down consumer.")
     except Exception as e:
-        print(f"Error: {e}")
+        logging.error(f"Error: {e}")
         raise
