@@ -50,27 +50,43 @@ def get_records_from_kinesis(stream_name, shard_id, shard_iterator_type='TRIM_HO
     """
     kinesis_client = boto3.client('kinesis')
 
-    shard_iterator = kinesis_client.get_shard_iterator(
-        StreamName=stream_name,
-        ShardId=shard_id,
-        ShardIteratorType=shard_iterator_type,
-    )['ShardIterator']
+    print(f"Getting shard iterator for stream '{stream_name}', shard ID '{shard_id}', "
+          f"using iterator type '{shard_iterator_type}'.")
+
+    try:
+        shard_iterator = kinesis_client.get_shard_iterator(
+            StreamName=stream_name,
+            ShardId=shard_id,
+            ShardIteratorType=shard_iterator_type,
+        )['ShardIterator']
+        print("Successfully obtained shard iterator.")
+    except Exception as e:
+        print(f"Error obtaining shard iterator: {e}")
+        raise
 
     while True:
-        response = kinesis_client.get_records(ShardIterator=shard_iterator, Limit=10)
-        shard_iterator = response['NextShardIterator']
+        try:
+            response = kinesis_client.get_records(ShardIterator=shard_iterator, Limit=10)
+            shard_iterator = response['NextShardIterator']
 
-        records = response['Records']
-        for record in records:
-            yield json.loads(record['Data'])
+            records = response['Records']
+            for record in records:
+                print(f"Processing record with data: {record['Data'][:100]}...")ta
+                yield json.loads(record['Data'])
 
-        # Avoid hitting Kinesis read limits
-        if not records:
-            time.sleep(0.5)
+            if not records:
+                time.sleep(0.5)
+
+        except Exception as e:
+            print(f"Error fetching or processing records: {e}")
+            time.sleep(1)
+
 
 
 if __name__ == "__main__":
+    print(f"Loading model from {PATH_TO_MODEL}")
     model = load_model(PATH_TO_MODEL, compile=False)
+    print("compiling model.")
     model.compile(loss="binary_crossentropy", optimizer=Adam())
 
     print(f"Starting to consume records from Kinesis stream: {STREAM_NAME}, Shard ID: {SHARD_ID}")
