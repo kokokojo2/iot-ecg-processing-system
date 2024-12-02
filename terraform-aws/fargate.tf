@@ -174,7 +174,8 @@ resource "aws_ecs_task_definition" "fargate_task" {
       environment = [
         { name = "STREAM_NAME", value = local.kinesis_ecg_chunks_stream_name },
         { name = "SHARD_ID", value = local.kinesis_shard_id_name },
-        { name = "AWS_REGION", value = "eu-central-1" },
+        { name = "AWS_REGION", value = var.region },
+
       ]
       logConfiguration = {
         logDriver = "awslogs"
