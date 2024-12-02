@@ -7,6 +7,7 @@ locals {
   dynamodb_table_name_ecg_raw = "ecg-data-chunks-raw"
   lambda_aggregator_function_name = "ecg-data-parts-aggregator-func"
   kinesis_ecg_chunks_stream_name = "ecg-aggregated-chunks-data-stream"
+  kinesis_shard_id_name = "shardId-000000000000"
   ecr_docker_ecg_inference_name = "ecg-docker-inference"
   fargate_cluster_name = "ecg-abnormality-detection-cluster"
   fargate_task_execution_role = "fargate-ecg-task-execution-role"

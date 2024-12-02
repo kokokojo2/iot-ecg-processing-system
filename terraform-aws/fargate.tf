@@ -162,6 +162,7 @@ resource "aws_ecs_task_definition" "fargate_task" {
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
   execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
+  task_role_arn            = aws_iam_role.ecs_task_role.arn
   cpu                      = "512"
   memory                   = "1024"
 
@@ -171,7 +172,8 @@ resource "aws_ecs_task_definition" "fargate_task" {
       image     = local.fargate_task_image_uri
       essential = true
       environment = [
-        { name = "KINESIS_STREAM", value = local.kinesis_ecg_chunks_stream_name },
+        { name = "STREAM_NAME", value = local.kinesis_ecg_chunks_stream_name },
+        { name = "SHARD_ID", value = local.kinesis_shard_id_name },
         { name = "AWS_REGION", value = "eu-central-1" },
       ]
       logConfiguration = {

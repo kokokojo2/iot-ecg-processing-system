@@ -1,70 +1,96 @@
+import os
 import json
-import sys
-
 import numpy as np
+import boto3
 from tensorflow.keras.models import load_model
 from tensorflow.keras.optimizers import Adam
+import time
 
+# KCL usage should be added later
+# now the code uses hardcoded shardId
+# as we're running only one instance with no scaling
+
+# anyway we do not need scaling so far
+# as the Kinesis data stream scaling should be implemented first
+# https://aws.amazon.com/blogs/big-data/auto-scaling-amazon-kinesis-data-streams-using-amazon-cloudwatch-and-aws-lambda/
+
+
+STREAM_NAME = os.getenv('STREAM_NAME')
+SHARD_ID = os.getenv('SHARD_ID')
 PATH_TO_MODEL = "./model.hdf5"
 
 
-class KinesisRecordProcessor:
-    def __init__(self):
-        self.model = load_model(PATH_TO_MODEL, compile=False)
-        self.model.compile(loss="binary_crossentropy", optimizer=Adam())
-        print("Model loaded successfully.")
+def predict_on_data(model, aggregated_data):
+    """
+    Predict on a single ECG sample using the pre-trained model.
 
-    def process_record(self, record):
-        """
-        Process a single record received from the Kinesis stream.
-        """
-        try:
-            device_id = record['device_id']
-            chunk_idx = record['chunk_idx']
-            aggregated_data = np.array(record['aggregated_data'])
+    Parameters:
+    model: Loaded Keras model for prediction.
+    aggregated_data: ECG data as a NumPy array of shape (4096, 12).
 
-            print(f"Received data from device: {device_id}, chunk index: {chunk_idx}, shape: {aggregated_data.shape}.")
-            print("Running prediction...")
-            prediction = self.predict_on_data(aggregated_data)
-            print(f"Prediction: {prediction}")
-        except Exception as e:
-            print(f"Error processing record: {e}")
+    Returns:
+    np.array: Prediction for the input ECG data.
+    """
+    data = np.expand_dims(aggregated_data, axis=0)  # Shape (1, 4096, 12)
+    y_score = model.predict(data, verbose=0)
+    return y_score
 
-    def predict_on_data(self, aggregated_data):
-        """
-        Predict on a single ECG sample using the pre-trained model.
-        """
-        data = np.expand_dims(aggregated_data, axis=0)  # Shape (1, 4096, 12)
-        y_score = self.model.predict(data, verbose=0)
-        return y_score
 
-    def run(self):
-        """
-        Continuously process records from stdin as provided by the Multi-Language Daemon.
-        """
-        for line in sys.stdin:
-            message = json.loads(line)
-            action = message.get('action')
+def get_records_from_kinesis(stream_name, shard_id, shard_iterator_type='TRIM_HORIZON'):
+    """
+    Retrieve records continuously from an Amazon Kinesis stream.
 
-            if action == 'initialize':
-                print(json.dumps({"action": "status", "responseFor": "initialize", "status": "ok"}))
-                sys.stdout.flush()
+    Parameters:
+    stream_name (str): Name of the Kinesis stream.
+    shard_id (str): Shard ID to consume data from.
+    shard_iterator_type (str): Type of shard iterator to use (e.g., 'TRIM_HORIZON', 'LATEST').
 
-            elif action == 'processRecords':
-                for record in message['records']:
-                    try:
-                        self.process_record(json.loads(record['data']))
-                    except Exception as e:
-                        print("Error processing record: {}".format(e))
+    Yields:
+    dict: Parsed record data.
+    """
+    kinesis_client = boto3.client('kinesis')
 
-                print(json.dumps({"action": "status", "responseFor": "processRecords", "status": "ok"}))
-                sys.stdout.flush()
+    shard_iterator = kinesis_client.get_shard_iterator(
+        StreamName=stream_name,
+        ShardId=shard_id,
+        ShardIteratorType=shard_iterator_type,
+    )['ShardIterator']
 
-            elif action == 'shutdown':
-                print(json.dumps({"action": "status", "responseFor": "shutdown", "status": "ok"}))
-                sys.stdout.flush()
+    while True:
+        response = kinesis_client.get_records(ShardIterator=shard_iterator, Limit=10)
+        shard_iterator = response['NextShardIterator']
+
+        records = response['Records']
+        for record in records:
+            yield json.loads(record['Data'])
+
+        # Avoid hitting Kinesis read limits
+        if not records:
+            time.sleep(0.5)
 
 
 if __name__ == "__main__":
-    processor = KinesisRecordProcessor()
-    processor.run()
+    model = load_model(PATH_TO_MODEL, compile=False)
+    model.compile(loss="binary_crossentropy", optimizer=Adam())
+
+    print(f"Starting to consume records from Kinesis stream: {STREAM_NAME}, Shard ID: {SHARD_ID}")
+    try:
+        for record in get_records_from_kinesis(stream_name=STREAM_NAME, shard_id=SHARD_ID):
+            try:
+                device_id = record['device_id']
+                chunk_idx = record['chunk_idx']
+                aggregated_data = np.array(record['aggregated_data'])
+
+                print(f"Received data from device: {device_id}, chunk index: {chunk_idx}, shape: {aggregated_data.shape}.")
+                print("Running prediction...")
+                prediction = predict_on_data(model, aggregated_data)
+                print(f"Prediction: {prediction}")
+
+            except Exception as e:
+                print(f"Error processing record: {e}")
+
+    except KeyboardInterrupt:
+        print("Shutting down consumer.")
+    except Exception as e:
+        print(f"Error: {e}")
+        raise
