@@ -154,6 +154,13 @@ resource "aws_iam_policy" "ecs_task_policy" {
           "dynamodb:UpdateItem"
         ],
         Resource = aws_dynamodb_table.ecg_abnormality_detection_results_table.arn
+      },
+      {
+        Effect   = "Allow",
+        Action   = [
+          "iot:Publish"
+        ],
+        Resource = "*"
       }
     ]
   })

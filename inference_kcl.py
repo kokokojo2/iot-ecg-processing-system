@@ -21,14 +21,25 @@ PATH_TO_MODEL = "./model.hdf5"
 BATCH_SIZE = 15
 DYNAMODB_TABLE_NAME = "ecg-data-chunks-processed"
 
-# DynamoDB client
+# AWS Clients
 dynamodb = boto3.resource("dynamodb")
+iot_client = boto3.client("iot-data")
 table = dynamodb.Table(DYNAMODB_TABLE_NAME)
+
+
+def decimal_serializer(obj):
+    """
+    Custom serializer for Decimal objects.
+    Converts Decimal to float; raises TypeError for unsupported types.
+    """
+    if isinstance(obj, Decimal):
+        return float(obj)
+    raise TypeError(f"Type {type(obj)} not serializable")
 
 
 def save_full_record_with_prediction(record, prediction):
     """
-    Save the full record along with the prediction to DynamoDB.
+    Save the full record along with the prediction to DynamoDB and publish to AWS IoT Core.
 
     Parameters:
     record (dict): The full record from Kinesis.
@@ -48,8 +59,17 @@ def save_full_record_with_prediction(record, prediction):
         )
         logging.info(f"Saved full record with prediction for Device ID: {record['device_id']}, "
                      f"Timestamp: {record['timestamp_capture_begin']}")
+
+        # Publish record to AWS IoT Core MQTT topic
+        topic = f"iot/ecg/{record['device_id']}/chunk-results/"
+        iot_client.publish(
+            topic=topic,
+            qos=1,
+            payload=json.dumps(record, default=decimal_serializer)
+        )
+        logging.info(f"Published record to IoT Core topic: {topic}")
     except Exception as e:
-        logging.error(f"Unexpected error while saving record to DynamoDB: {e}")
+        logging.error(f"Unexpected error while saving record to DynamoDB or publishing to IoT Core: {e}")
 
 
 def predict_on_data(model, aggregated_data):
@@ -152,7 +172,7 @@ if __name__ == "__main__":
                 logging.info(f"Processing batch of size {len(aggregated_data_batch)}.")
                 predictions = predict_on_batch(model, aggregated_data_batch)
 
-                # Save full records with predictions to DynamoDB
+                # Save full records with predictions to DynamoDB and publish to MQTT
                 for i, prediction in enumerate(predictions):
                     record = record_batch[i]  # Get the full record
                     del record["aggregated_data"]
