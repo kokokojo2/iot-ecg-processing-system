@@ -6,7 +6,6 @@ from decimal import Decimal
 from boto3.dynamodb.conditions import Key, Attr
 from datetime import datetime, timezone
 
-LAMBDA_PROCESSING_STARTED = datetime.now(timezone.utc).isoformat()
 
 DYNAMODB_TABLE_NAME = os.environ.get("DYNAMODB_TABLE_NAME")
 KINESIS_STREAM_NAME = os.environ.get("KINESIS_STREAM_NAME")
@@ -22,6 +21,9 @@ def lambda_handler(event, context):
     """
     Lambda handler triggered by DynamoDB Streams or scheduled execution.
     """
+    # Capture the processing start time
+    lambda_processing_started = datetime.now(timezone.utc).isoformat()
+
     print("DEBUG: Received event from DynamoDB Streams.")
     print("DEBUG: Event Metadata:")
     print(f"Event ID: {context.aws_request_id}")
@@ -38,13 +40,13 @@ def lambda_handler(event, context):
             print(f"Record Keys: {record['dynamodb'].get('Keys', {})}")
 
             if record["eventName"] == "INSERT":
-                process_new_record(record["dynamodb"]["NewImage"])
+                process_new_record(record["dynamodb"]["NewImage"], lambda_processing_started)
     except Exception as e:
         print(f"ERROR: Failed to process event. Exception: {e}")
         raise
 
 
-def process_new_record(new_image):
+def process_new_record(new_image, lambda_processing_started):
     """
     Process a new DynamoDB record to check for aggregation conditions.
     """
@@ -62,13 +64,13 @@ def process_new_record(new_image):
     print("part:", part)
     print("timestamp_capture_begin:", timestamp_capture_begin)
 
-    # skip processing for other parts of the chunk
-    # trigger processing only for 15th part,
+    # Skip processing for other parts of the chunk
+    # Trigger processing only for 15th part,
     # as we need to aggregate 0-14 parts and join with 15
     if part != 15:
         return
 
-    # attempt to mark the record as "processing"
+    # Attempt to mark the record as "processing"
     try:
         table.update_item(
             Key={"device_id": device_id, "timestamp_capture_begin": timestamp_capture_begin},
@@ -85,10 +87,10 @@ def process_new_record(new_image):
         )
         return  # Exit if the item is already marked as processing or processed
 
-    aggregate_ecg_data(device_id, chunk_idx)
+    aggregate_ecg_data(device_id, chunk_idx, lambda_processing_started)
 
 
-def aggregate_ecg_data(device_id, chunk_idx):
+def aggregate_ecg_data(device_id, chunk_idx, lambda_processing_started):
     """
     Aggregate ECG data for a specific device and chunk from DynamoDB.
     """
@@ -145,7 +147,7 @@ def aggregate_ecg_data(device_id, chunk_idx):
         "timestamp_chunk_sent": max(timestamps_chunk_sent),
         "timestamp_iot_core_rule_triggered": datetime.fromtimestamp(max(timestamp_iot_rule_triggered) / 1000,
                                                                     timezone.utc).isoformat(),
-        "timestamp_lambda_processing_started": LAMBDA_PROCESSING_STARTED,
+        "timestamp_lambda_processing_started": lambda_processing_started,
     }
 
     print(f"DEBUG: Aggregated metadata: {aggregated_metadata}")
