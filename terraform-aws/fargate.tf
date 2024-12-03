@@ -145,10 +145,20 @@ resource "aws_iam_policy" "ecs_task_policy" {
           "kinesis:ListStreams"
         ],
         Resource = aws_kinesis_stream.ecg_aggregated_chunks_data.arn
+      },
+      {
+        Effect   = "Allow",
+        Action   = [
+          "dynamodb:PutItem",
+          "dynamodb:GetItem",
+          "dynamodb:UpdateItem"
+        ],
+        Resource = aws_dynamodb_table.ecg_abnormality_detection_results_table.arn
       }
     ]
   })
 }
+
 
 
 resource "aws_iam_role_policy_attachment" "task_attachment" {

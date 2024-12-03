@@ -6,6 +6,8 @@ import logging
 from tensorflow.keras.models import load_model
 from tensorflow.keras.optimizers import Adam
 import time
+from decimal import Decimal
+
 
 # Configure logging
 logging.basicConfig(
@@ -13,19 +15,41 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# KCL usage should be added later
-# now the code uses hardcoded shardId
-# as we're running only one instance with no scaling
-
-# anyway we do not need scaling so far
-# as the Kinesis data stream scaling should be implemented first
-# https://aws.amazon.com/blogs/big-data/auto-scaling-amazon-kinesis-data-streams-using-amazon-cloudwatch-and-aws-lambda/
-
-
 STREAM_NAME = os.getenv('STREAM_NAME')
 SHARD_ID = os.getenv('SHARD_ID')
 PATH_TO_MODEL = "./model.hdf5"
 BATCH_SIZE = 15
+DYNAMODB_TABLE_NAME = "ecg-data-chunks-processed"
+
+# DynamoDB client
+dynamodb = boto3.resource("dynamodb")
+table = dynamodb.Table(DYNAMODB_TABLE_NAME)
+
+
+def save_full_record_with_prediction(record, prediction):
+    """
+    Save the full record along with the prediction to DynamoDB.
+
+    Parameters:
+    record (dict): The full record from Kinesis.
+    prediction (np.array): The prediction result to add to the record.
+
+    Returns:
+    None
+    """
+    try:
+        # Convert prediction to Decimal
+        record['prediction'] = [Decimal(str(value)) for value in prediction.tolist()]
+        record['sampling_rate_hz'] = Decimal(str(record['sampling_rate_hz']))
+
+        # Save the full record to DynamoDB
+        table.put_item(
+            Item=record
+        )
+        logging.info(f"Saved full record with prediction for Device ID: {record['device_id']}, "
+                     f"Timestamp: {record['timestamp_capture_begin']}")
+    except Exception as e:
+        logging.error(f"Unexpected error while saving record to DynamoDB: {e}")
 
 
 def predict_on_data(model, aggregated_data):
@@ -117,17 +141,10 @@ if __name__ == "__main__":
         for record_batch in get_records_from_kinesis(stream_name=STREAM_NAME, shard_id=SHARD_ID):
             try:
                 # Collect aggregated data and metadata from the batch
-                device_ids = []
-                chunk_indices = []
                 aggregated_data_batch = []
 
                 for record in record_batch:
-                    device_id = record['device_id']
-                    chunk_idx = record['chunk_idx']
                     aggregated_data = np.array(record['aggregated_data'])
-
-                    device_ids.append(device_id)
-                    chunk_indices.append(chunk_idx)
                     aggregated_data_batch.append(aggregated_data)
 
                 aggregated_data_batch = np.stack(aggregated_data_batch)  # Convert to NumPy array
@@ -135,9 +152,11 @@ if __name__ == "__main__":
                 logging.info(f"Processing batch of size {len(aggregated_data_batch)}.")
                 predictions = predict_on_batch(model, aggregated_data_batch)
 
-                # Log predictions for each record in the batch
+                # Save full records with predictions to DynamoDB
                 for i, prediction in enumerate(predictions):
-                    logging.info(f"Device: {device_ids[i]}, Chunk: {chunk_indices[i]}, Prediction: {prediction}")
+                    record = record_batch[i]  # Get the full record
+                    del record["aggregated_data"]
+                    save_full_record_with_prediction(record, prediction)
 
             except Exception as e:
                 logging.error(f"Error processing batch: {e}")
