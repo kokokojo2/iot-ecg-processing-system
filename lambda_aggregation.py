@@ -11,7 +11,6 @@ LAMBDA_PROCESSING_STARTED = datetime.now(timezone.utc).isoformat()
 DYNAMODB_TABLE_NAME = os.environ.get("DYNAMODB_TABLE_NAME")
 KINESIS_STREAM_NAME = os.environ.get("KINESIS_STREAM_NAME")
 
-
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(DYNAMODB_TABLE_NAME)
 kinesis = boto3.client("kinesis")
@@ -128,7 +127,7 @@ def aggregate_ecg_data(device_id, chunk_idx):
         data = item["ecg_data"]
         if device_id == "physical_iot_device_1":
             # Transform data into a 2D array for this device
-            data = [data] + [[0] * len(data) for _ in range(11)]
+            data = [[point] + [0] * 11 for point in data]
         aggregated_data.extend(data)
         timestamps_capture_begin.append(item["timestamp_capture_begin"])
         timestamps_chunk_sent.append(item["timestamp_chunk_sent"])
