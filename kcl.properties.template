@@ -1,6 +1,0 @@
-streamName=<STREAM_NAME>
-applicationName=<APPLICATION_NAME>
-regionName=<AWS_REGION>
-initialPositionInStream=TRIM_HORIZON
-executableName=python3 processor.py
-processingLanguage=python
