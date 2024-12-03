@@ -6,6 +6,8 @@ from decimal import Decimal
 from boto3.dynamodb.conditions import Key, Attr
 from datetime import datetime, timezone
 
+LAMBDA_PROCESSING_STARTED = datetime.now(timezone.utc).isoformat()
+
 DYNAMODB_TABLE_NAME = os.environ.get("DYNAMODB_TABLE_NAME")
 KINESIS_STREAM_NAME = os.environ.get("KINESIS_STREAM_NAME")
 
@@ -144,7 +146,7 @@ def aggregate_ecg_data(device_id, chunk_idx):
         "timestamp_chunk_sent": max(timestamps_chunk_sent),
         "timestamp_iot_core_rule_triggered": datetime.fromtimestamp(max(timestamp_iot_rule_triggered) / 1000,
                                                                     timezone.utc).isoformat(),
-        "timestamp_lambda_processing_started": datetime.now(timezone.utc).isoformat()
+        "timestamp_lambda_processing_started": LAMBDA_PROCESSING_STARTED,
     }
 
     print(f"DEBUG: Aggregated metadata: {aggregated_metadata}")
@@ -156,7 +158,6 @@ def aggregate_ecg_data(device_id, chunk_idx):
         return
 
     # Send the aggregated data to Kinesis
-    aggregated_metadata["timestamp_lambda_processing_finished"] = datetime.now(timezone.utc).isoformat()
     send_to_kinesis(device_id, chunk_idx, aggregated_data, aggregated_metadata)
 
     for item in items:
@@ -169,7 +170,6 @@ def aggregate_ecg_data(device_id, chunk_idx):
             f"DEBUG: Marked record as 'complete' for device {device_id}, timestamp_capture_begin {item['timestamp_capture_begin']}."
         )
 
-    # Log processing finished time
     print(f"DEBUG: Final metadata with processing times: {aggregated_metadata}")
 
 
@@ -191,7 +191,6 @@ def send_to_kinesis(device_id, chunk_idx, aggregated_data, aggregated_metadata):
         "device_id": device_id,
         "chunk_idx": chunk_idx,
         **aggregated_metadata,  # Add aggregated metadata
-        # "aggregated_data": aggregated_data,  # Exclude from debug logs
     }
     print(
         f"DEBUG: Sending payload to Kinesis (excluding aggregated_data): {json.dumps(payload, default=decimal_serializer)}"
@@ -199,6 +198,9 @@ def send_to_kinesis(device_id, chunk_idx, aggregated_data, aggregated_metadata):
 
     # Add the aggregated data to the payload
     payload["aggregated_data"] = aggregated_data
+
+    processing_finished = datetime.now(timezone.utc).isoformat()
+    payload["timestamp_lambda_processing_finished"] = processing_finished
 
     serialized_payload = json.dumps(payload, default=decimal_serializer)
     response = kinesis.put_record(
