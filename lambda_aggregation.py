@@ -4,7 +4,7 @@ import boto3
 
 from decimal import Decimal
 from boto3.dynamodb.conditions import Key, Attr
-
+from datetime import datetime, timezone
 
 DYNAMODB_TABLE_NAME = os.environ.get("DYNAMODB_TABLE_NAME")
 KINESIS_STREAM_NAME = os.environ.get("KINESIS_STREAM_NAME")
@@ -119,13 +119,19 @@ def aggregate_ecg_data(device_id, chunk_idx):
     aggregated_data = []
     timestamps_capture_begin = []
     timestamps_chunk_sent = []
+    timestamp_iot_rule_triggered = []
     sampling_rates = set()
 
     for item in sorted(items, key=lambda x: int(x["part"])):
-        aggregated_data.extend(item["ecg_data"])
+        data = item["ecg_data"]
+        if device_id == "physical_iot_device_1":
+            # Transform data into a 2D array for this device
+            data = [data] + [[0] * len(data) for _ in range(11)]
+        aggregated_data.extend(data)
         timestamps_capture_begin.append(item["timestamp_capture_begin"])
         timestamps_chunk_sent.append(item["timestamp_chunk_sent"])
         sampling_rates.add(item["sampling_rate_hz"])
+        timestamp_iot_rule_triggered.append(item["timestamp_iot_core_rule_triggered"])
 
     if len(sampling_rates) != 1:
         raise ValueError(
@@ -133,9 +139,12 @@ def aggregate_ecg_data(device_id, chunk_idx):
         )
 
     aggregated_metadata = {
+        "sampling_rate_hz": list(sampling_rates)[0],
         "timestamp_capture_begin": min(timestamps_capture_begin),
         "timestamp_chunk_sent": max(timestamps_chunk_sent),
-        "sampling_rate_hz": list(sampling_rates)[0],
+        "timestamp_iot_core_rule_triggered": datetime.fromtimestamp(max(timestamp_iot_rule_triggered) / 1000,
+                                                                    timezone.utc).isoformat(),
+        "timestamp_lambda_processing_started": datetime.now(timezone.utc).isoformat()
     }
 
     print(f"DEBUG: Aggregated metadata: {aggregated_metadata}")
@@ -147,6 +156,7 @@ def aggregate_ecg_data(device_id, chunk_idx):
         return
 
     # Send the aggregated data to Kinesis
+    aggregated_metadata["timestamp_lambda_processing_finished"] = datetime.now(timezone.utc).isoformat()
     send_to_kinesis(device_id, chunk_idx, aggregated_data, aggregated_metadata)
 
     for item in items:
@@ -158,6 +168,9 @@ def aggregate_ecg_data(device_id, chunk_idx):
         print(
             f"DEBUG: Marked record as 'complete' for device {device_id}, timestamp_capture_begin {item['timestamp_capture_begin']}."
         )
+
+    # Log processing finished time
+    print(f"DEBUG: Final metadata with processing times: {aggregated_metadata}")
 
 
 def decimal_serializer(obj):
