@@ -20,6 +20,7 @@ SHARD_ID = os.getenv('SHARD_ID')
 PATH_TO_MODEL = "./model.hdf5"
 BATCH_SIZE = 15
 DYNAMODB_TABLE_NAME = "ecg-data-chunks-processed"
+ABNORMALITIES = ["1dAVb", "RBBB", "LBBB", "SB", "AF", "ST"]
 
 # AWS Clients
 dynamodb = boto3.resource("dynamodb")
@@ -52,6 +53,11 @@ def save_full_record_with_prediction(record, prediction):
         # Convert prediction to Decimal
         record['prediction'] = [Decimal(str(value)) for value in prediction.tolist()]
         record['sampling_rate_hz'] = Decimal(str(record['sampling_rate_hz']))
+
+        # Convert prediction to binary and map abnormalities
+        binary_prediction = (prediction > 0.5).astype(int)
+        detected_abnormalities = [ABNORMALITIES[i] for i, value in enumerate(binary_prediction) if value == 1]
+        record['detected_abnormalities'] = detected_abnormalities
 
         # Save the full record to DynamoDB
         table.put_item(

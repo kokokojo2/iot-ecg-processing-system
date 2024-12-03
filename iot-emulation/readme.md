@@ -111,35 +111,38 @@ The results will be published in the following JSON format:
 
 ```json
 {
-  "device_id": "physical_iot_device_1",
-  "chunk_idx": 0,
-  "sampling_rate_hz": 400,
-  "timestamp_capture_begin": "2024-12-03T14:40:27.904Z",
-  "timestamp_chunk_sent": "2024-12-03T14:40:37.532Z",
-  "timestamp_iot_core_rule_triggered": "2024-12-03T12:40:37+00:00",
-  "timestamp_lambda_processing_started": "2024-12-03T12:40:22.280189+00:00",
-  "timestamp_lambda_processing_finished": "2024-12-03T12:40:43.867756+00:00",
-  "timestamp_ecs_inference_started": "2024-12-03T12:40:45.453635+00:00",
-  "timestamp_ecs_inference_finished": "2024-12-03T12:40:46.017590+00:00",
+  "device_id": "emulated_device_42",
+  "chunk_idx": 1,
+  "sampling_rate_hz": 400.0,
+  "timestamp_capture_begin": "2024-12-03T15:41:13.529Z",
+  "timestamp_chunk_sent": "2024-12-03T15:41:23.156Z",
+  "timestamp_iot_core_rule_triggered": "2024-12-03T13:41:23+00:00",
+  "timestamp_lambda_processing_started": "2024-12-03T13:41:23.497928+00:00",
+  "timestamp_lambda_processing_finished": "2024-12-03T13:41:29.887253+00:00",
+  "timestamp_ecs_inference_started": "2024-12-03T17:53:34.629705+00:00",
+  "timestamp_ecs_inference_finished": "2024-12-03T17:53:35.418247+00:00",
   "prediction": [
-    1.4243121313484153e-06,
-    1.0710035525107742e-07,
-    2.6337025360589905e-07,
-    4.537741915555671e-07,
-    9.485412988397002e-07,
-    6.4134764166112745e-09
-  ]
+    0.02889733575284481,
+    0.002006666036322713,
+    0.317786306142807,
+    2.8278205718379468e-05,
+    0.048343442380428314,
+    0.0003204998793080449
+  ],
+  "detected_abnormalities": []
 }
 ```
 
 #### Notes:
-- **`prediction`**: Array of probabilities for the following abnormalities:
+- **`prediction`**: Array of probabilities corresponding to the following abnormalities:
   - `["1dAVb", "RBBB", "LBBB", "SB", "AF", "ST"]`.
 - **Binary Predictions**:
-  - Probabilities can be converted to binary values using a **threshold of 0.5**.
-  - Values ≥ 0.5 indicate the abnormality is present.
-
----
+  - Probabilities are converted to binary values using a **threshold of 0.5**.
+  - Values ≥ 0.5 indicate the abnormality is detected.
+- **`detected_abnormalities`**:
+  - A list of abnormalities detected in the ECG data based on the binary predictions.
+  - Example: `["LBBB"]` if only "LBBB" is detected.
+  - If no abnormalities are detected, the list will be empty: `[]`.
 
 ## Authentication Requirements
 
