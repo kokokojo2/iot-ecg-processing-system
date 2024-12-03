@@ -7,7 +7,7 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.optimizers import Adam
 import time
 from decimal import Decimal
-
+from datetime import datetime, timezone
 
 # Configure logging
 logging.basicConfig(
@@ -160,6 +160,9 @@ if __name__ == "__main__":
     try:
         for record_batch in get_records_from_kinesis(stream_name=STREAM_NAME, shard_id=SHARD_ID):
             try:
+                # Capture the start of ECS inference
+                timestamp_ecs_inference_started = datetime.now(timezone.utc).isoformat()
+
                 # Collect aggregated data and metadata from the batch
                 aggregated_data_batch = []
 
@@ -172,10 +175,18 @@ if __name__ == "__main__":
                 logging.info(f"Processing batch of size {len(aggregated_data_batch)}.")
                 predictions = predict_on_batch(model, aggregated_data_batch)
 
+                # Capture the end of ECS inference
+                timestamp_ecs_inference_finished = datetime.now(timezone.utc).isoformat()
+
                 # Save full records with predictions to DynamoDB and publish to MQTT
                 for i, prediction in enumerate(predictions):
                     record = record_batch[i]  # Get the full record
                     del record["aggregated_data"]
+
+                    # Add ECS inference timestamps
+                    record['timestamp_ecs_inference_started'] = timestamp_ecs_inference_started
+                    record['timestamp_ecs_inference_finished'] = timestamp_ecs_inference_finished
+
                     save_full_record_with_prediction(record, prediction)
 
             except Exception as e:
