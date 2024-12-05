@@ -16,8 +16,22 @@ resource "aws_dynamodb_table" "ecg_data_raw_table" {
     type = "S"
   }
 
-  stream_enabled = true
-  stream_view_type = "NEW_IMAGE"
+  attribute {
+    name = "chunk_idx"
+    type = "N"
+  }
+
+  global_secondary_index {
+    name            = "DeviceIdChunkIdxIndex"
+    hash_key        = "device_id"
+    range_key       = "chunk_idx"
+    projection_type = "ALL"
+    read_capacity   = 25
+    write_capacity  = 25
+  }
+
+  stream_enabled    = true
+  stream_view_type  = "NEW_IMAGE"
 }
 
 

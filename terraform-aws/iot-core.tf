@@ -1,16 +1,25 @@
 resource "aws_iot_topic_rule" "iot_topic_rule" {
   name        = local.iot_core_rule_dynamodb_name
-  sql         = "SELECT *, timestamp() AS timestamp_iot_core_rule_triggered FROM '${local.ecg_data_mqtt_topic_name}'"
+  sql         = <<SQL
+SELECT
+       device_id,
+       timestamp_capture_begin,
+       chunk_idx,
+       part,
+       sampling_rate_hz,
+       ecg_data AS ecg_data,
+       timestamp_chunk_sent,
+       timestamp() AS timestamp_iot_core_rule_triggered
+FROM '${local.ecg_data_mqtt_topic_name}'
+SQL
   sql_version = "2016-03-23"
   enabled     = true
 
-  dynamodb {
-    table_name      = local.dynamodb_table_name_ecg_raw
-    role_arn        = aws_iam_role.iot_core_dynamodb_role.arn
-    hash_key_field  = "device_id"
-    hash_key_value  = "$${device_id}"
-    range_key_field = "timestamp_capture_begin"
-    range_key_value = "$${timestamp_capture_begin}"
+  dynamodbv2 {
+    role_arn   = aws_iam_role.iot_core_dynamodb_role.arn
+    put_item {
+      table_name = local.dynamodb_table_name_ecg_raw
+    }
   }
 
   cloudwatch_logs {

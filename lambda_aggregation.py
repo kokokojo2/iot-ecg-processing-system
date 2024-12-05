@@ -51,7 +51,6 @@ def process_new_record(new_image, lambda_processing_started):
     Process a new DynamoDB record to check for aggregation conditions.
     """
     print("DEBUG: Processing new image metadata (excluding ecg_data):")
-    new_image = new_image["payload"]["M"]
 
     device_id = new_image["device_id"]["S"]
     chunk_idx = int(new_image["chunk_idx"]["N"])
@@ -98,14 +97,13 @@ def aggregate_ecg_data(device_id, chunk_idx, lambda_processing_started):
         f"DEBUG: Aggregating ECG data for device {device_id}, chunk index {chunk_idx}."
     )
 
+    # using index here to query efficiently on device_id & chunk_id combination
     response = table.query(
-        KeyConditionExpression=Key("device_id").eq(device_id),
-        FilterExpression=Attr("payload.chunk_idx").eq(
-            Decimal(chunk_idx)
-        ),  # Access chunk_idx inside payload
+        IndexName="DeviceIdChunkIdxIndex",
+        KeyConditionExpression=Key("device_id").eq(device_id) & Key("chunk_idx").eq(chunk_idx),
     )
 
-    items = [item["payload"] for item in response["Items"]]
+    items = response["Items"]
     print(
         f"DEBUG: Retrieved {len(items)} items for device {device_id}, chunk {chunk_idx}."
     )

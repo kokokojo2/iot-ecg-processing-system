@@ -59,7 +59,10 @@ resource "aws_iam_policy" "ecg_chunks_aggregator_func_policy" {
           "dynamodb:PutItem",
           "dynamodb:GetItem"
         ]
-        Resource = aws_dynamodb_table.ecg_data_raw_table.arn
+        Resource = [
+          aws_dynamodb_table.ecg_data_raw_table.arn,
+          "${aws_dynamodb_table.ecg_data_raw_table.arn}/index/DeviceIdChunkIdxIndex"
+        ]
       },
       {
         Effect = "Allow"
